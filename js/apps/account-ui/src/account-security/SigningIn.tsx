@@ -213,6 +213,18 @@ export const SigningIn = () => {
     ...new Set(credentials.map((c) => c.category)),
   ];
 
+  const handleDeleteCredential = async (meta) => {
+  await login({
+    action: "delete_credential:" + meta.credential.id,
+  });
+};
+
+const handleUpdateAction = async (container) => {
+  await login({
+    action: container.updateAction,
+  });
+};
+
   return (
     <Page title={t("signingIn")} description={t("signingInDescription")}>
       {credentialUniqueCategories.map((category) => (
@@ -295,13 +307,7 @@ export const SigningIn = () => {
                                 <Button
                                   variant="danger"
                                   data-testrole="remove"
-                                  onClick={async () => {
-                                    await login({
-                                      action:
-                                        "delete_credential:" +
-                                        meta.credential.id,
-                                    });
-                                  }}
+                                  onClick={async () => handleDeleteCredential(meta)}
                                 >
                                   {t("delete")}
                                 </Button>
@@ -309,11 +315,7 @@ export const SigningIn = () => {
                               {container.updateAction && (
                                 <Button
                                   variant="secondary"
-                                  onClick={async () => {
-                                    await login({
-                                      action: container.updateAction,
-                                    });
-                                  }}
+                                  onClick={async () => handleUpdateAction(container)}
                                   data-testrole="update"
                                 >
                                   {t("update")}

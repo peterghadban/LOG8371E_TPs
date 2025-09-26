@@ -213,17 +213,35 @@ export const SigningIn = () => {
     ...new Set(credentials.map((c) => c.category)),
   ];
 
-  const handleDeleteCredential = async (meta) => {
-  await login({
-    action: "delete_credential:" + meta.credential.id,
-  });
-};
+  const renderDeleteButton = (container: any, meta: any) =>
+  container.removeable ? (
+    <Button
+      variant="danger"
+      data-testrole="remove"
+      onClick={async () => {
+      await login({
+        action: "delete_credential:" + meta.credential.id,
+      });
+    }}
+    >
+      {t("delete")}
+    </Button>
+  ) : null;
 
-const handleUpdateAction = async (container) => {
-  await login({
-    action: container.updateAction,
-  });
-};
+  const renderUpdateButton = (container: any) =>
+  container.updateAction ? (
+    <Button
+      variant="secondary"
+      onClick={async () => {
+        await login({
+        action: container.updateAction,
+        });
+      }}
+      data-testrole="update"
+    >
+      {t("update")}
+    </Button>
+  ) : null;
 
   return (
     <Page title={t("signingIn")} description={t("signingInDescription")}>
@@ -303,24 +321,8 @@ const handleUpdateAction = async (container) => {
                               aria-label={t("updateCredAriaLabel")}
                               aria-labelledby={`cred-${meta.credential.id}`}
                             >
-                              {container.removeable && (
-                                <Button
-                                  variant="danger"
-                                  data-testrole="remove"
-                                  onClick={async () => handleDeleteCredential(meta)}
-                                >
-                                  {t("delete")}
-                                </Button>
-                              )}
-                              {container.updateAction && (
-                                <Button
-                                  variant="secondary"
-                                  onClick={async () => handleUpdateAction(container)}
-                                  data-testrole="update"
-                                >
-                                  {t("update")}
-                                </Button>
-                              )}
+                              {renderDeleteButton(container, meta)}
+                              {renderUpdateButton(container)}
                             </DataListAction>,
                           ]}
                         />

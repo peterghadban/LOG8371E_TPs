@@ -213,6 +213,36 @@ export const SigningIn = () => {
     ...new Set(credentials.map((c) => c.category)),
   ];
 
+  const renderDeleteButton = (container: any, meta: any) =>
+  container.removeable ? (
+    <Button
+      variant="danger"
+      data-testrole="remove"
+      onClick={async () => {
+      await login({
+        action: "delete_credential:" + meta.credential.id,
+      });
+    }}
+    >
+      {t("delete")}
+    </Button>
+  ) : null;
+
+  const renderUpdateButton = (container: any) =>
+  container.updateAction ? (
+    <Button
+      variant="secondary"
+      onClick={async () => {
+        await login({
+        action: container.updateAction,
+        });
+      }}
+      data-testrole="update"
+    >
+      {t("update")}
+    </Button>
+  ) : null;
+
   return (
     <Page title={t("signingIn")} description={t("signingInDescription")}>
       {credentialUniqueCategories.map((category) => (
@@ -291,34 +321,8 @@ export const SigningIn = () => {
                               aria-label={t("updateCredAriaLabel")}
                               aria-labelledby={`cred-${meta.credential.id}`}
                             >
-                              {container.removeable && (
-                                <Button
-                                  variant="danger"
-                                  data-testrole="remove"
-                                  onClick={async () => {
-                                    await login({
-                                      action:
-                                        "delete_credential:" +
-                                        meta.credential.id,
-                                    });
-                                  }}
-                                >
-                                  {t("delete")}
-                                </Button>
-                              )}
-                              {container.updateAction && (
-                                <Button
-                                  variant="secondary"
-                                  onClick={async () => {
-                                    await login({
-                                      action: container.updateAction,
-                                    });
-                                  }}
-                                  data-testrole="update"
-                                >
-                                  {t("update")}
-                                </Button>
-                              )}
+                              {renderDeleteButton(container, meta)}
+                              {renderUpdateButton(container)}
                             </DataListAction>,
                           ]}
                         />

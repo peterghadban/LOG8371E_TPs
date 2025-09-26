@@ -1,0 +1,40 @@
+{
+  "id": null,
+  "title": "Keycloak Endpoint Availability Timeline",
+  "tags": ["keycloak", "availability"],
+  "timezone": "browser",
+  "schemaVersion": 30,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Endpoint Availability (1=UP, 0=DOWN)",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "probe_success{job=\"keycloak-account-probe\"}",
+          "legendFormat": "Keycloak /realms/master/account/",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 18, "w": 24, "x": 0, "y": 0 },
+      "lines": true,
+      "linewidth": 3,
+      "nullPointMode": "null",
+      "yaxes": [
+        {
+          "format": "short",
+          "min": 0,
+          "max": 1,
+          "label": "Availability"
+        },
+        { "format": "short" }
+      ],
+      "xaxis": {
+        "show": true,
+        "mode": "time"
+      }
+    }
+  ]
+}

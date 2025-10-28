@@ -3,6 +3,7 @@ import json
 import random
 import string
 import time
+import threading
 
 # ---------- Utility ----------
 def rand_name(prefix):
@@ -12,11 +13,38 @@ def rand_name(prefix):
 def random_bool():
     return random.choice([True, False])
 
+# ---------- Shared Auth Token (thread-safe) ----------
+shared_token = None
+token_expiry = 0
+lock = threading.Lock()
+
+def get_admin_token(client):
+    """Request a new admin token."""
+    res = client.post(
+        "/realms/master/protocol/openid-connect/token",
+        data={
+            "grant_type": "password",
+            "client_id": "admin-cli",
+            "username": "admin",
+            "password": "admin"
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        name="Get admin token (shared)"
+    )
+    if res.status_code == 200:
+        token_json = res.json()
+        token = token_json.get("access_token", "")
+        expires_in = token_json.get("expires_in", 60)
+        expiry = time.time() + expires_in - 5
+        print("[Auth] Obtained shared token.")
+        return token, expiry
+    else:
+        print(f"[Auth] Failed: {res.status_code}, {res.text}")
+        return None, 0
+
 # ---------- Locust User ----------
 class KeycloakUser(HttpUser):
     wait_time = between(1, 3)
-    token_expires_at = 0
-    token = ""
     headers = {}
 
     # Store created resource IDs for update/delete
@@ -26,43 +54,20 @@ class KeycloakUser(HttpUser):
     created_groups = []
     created_realms = []
 
-    # -------- AUTHENTICATION --------
-    def authenticate(self):
-        """Get a new admin token."""
-        res = self.client.post(
-            "/realms/master/protocol/openid-connect/token",
-            data={
-                "username": "admin",
-                "password": "admin",
-                "grant_type": "password",
-                "client_id": "admin-cli",
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            name="Get admin token",
-        )
-
-        if res.status_code == 200:
-            token_json = res.json()
-            self.token = token_json.get("access_token", "")
-            expires_in = token_json.get("expires_in", 60)
-            self.token_expires_at = time.time() + expires_in - 5
-            self.headers = {
-                "Authorization": f"Bearer {self.token}",
-                "Content-Type": "application/json",
-            }
-        else:
-            print(f"Auth failed: {res.status_code}, {res.text}")
-            self.token = ""
-            self.headers = {}
-
     def ensure_token(self):
-        """Ensure a valid token before each task."""
-        if time.time() > self.token_expires_at or not self.token:
-            self.authenticate()
+        """Ensure a valid shared token for all users."""
+        global shared_token, token_expiry
+        with lock:
+            if not shared_token or time.time() > token_expiry:
+                shared_token, token_expiry = get_admin_token(self.client)
+        self.headers = {
+            "Authorization": f"Bearer {shared_token}",
+            "Content-Type": "application/json",
+        }
 
     def on_start(self):
-        """Authenticate when a simulated user starts."""
-        self.authenticate()
+        """Authenticate once when a simulated user starts."""
+        self.ensure_token()
 
     # ---------- CREATE ----------
     @task(1)

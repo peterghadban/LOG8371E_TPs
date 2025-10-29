@@ -7,47 +7,54 @@ import threading
 
 # ---------- Utility ----------
 def rand_name(prefix):
-    """Generate a random name with a given prefix."""
     return prefix + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
 def random_bool():
     return random.choice([True, False])
+
 
 # ---------- Shared Auth Token (thread-safe) ----------
 shared_token = None
 token_expiry = 0
 lock = threading.Lock()
 
+# ---------- CONFIG (set your Keycloak credentials here) ----------
+KC_USERNAME = "admin"
+KC_PASSWORD = "admin"
+KC_REALM = "master"
+
 def get_admin_token(client):
-    """Request a new admin token."""
+    """Request a new admin token from Keycloak 26+ (no /auth prefix)."""
     res = client.post(
-        "/realms/master/protocol/openid-connect/token",
+        f"/realms/{KC_REALM}/protocol/openid-connect/token",
         data={
             "grant_type": "password",
             "client_id": "admin-cli",
-            "username": "admin",
-            "password": "admin"
+            "username": KC_USERNAME,
+            "password": KC_PASSWORD,
         },
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        name="Get admin token (shared)"
+        name="Get admin token (shared)",
     )
+
     if res.status_code == 200:
         token_json = res.json()
         token = token_json.get("access_token", "")
         expires_in = token_json.get("expires_in", 60)
         expiry = time.time() + expires_in - 5
-        print("[Auth] Obtained shared token.")
+        print("[Auth] ✅ Obtained shared admin token.")
         return token, expiry
     else:
-        print(f"[Auth] Failed: {res.status_code}, {res.text}")
+        print(f"[Auth] ❌ Failed ({res.status_code}): {res.text}")
+        time.sleep(2)
         return None, 0
+
 
 # ---------- Locust User ----------
 class KeycloakUser(HttpUser):
     wait_time = between(1, 3)
     headers = {}
 
-    # Store created resource IDs for update/delete
     created_users = []
     created_clients = []
     created_roles = []
@@ -60,70 +67,82 @@ class KeycloakUser(HttpUser):
         with lock:
             if not shared_token or time.time() > token_expiry:
                 shared_token, token_expiry = get_admin_token(self.client)
-        self.headers = {
-            "Authorization": f"Bearer {shared_token}",
-            "Content-Type": "application/json",
+        if shared_token:
+            self.headers = {
+                "Authorization": f"Bearer {shared_token}",
+                "Content-Type": "application/json",
+            }
+
+    def think(self, action_type: str):
+        """Simulate realistic human think time after actions."""
+        ranges = {
+            "create": (0.6, 1.8),
+            "update": (0.8, 2.2),
+            "delete": (0.5, 1.5),
+            "misc":   (0.4, 1.2),
         }
+        lo, hi = ranges.get(action_type, ranges["misc"])
+        time.sleep(random.uniform(lo, hi))
 
     def on_start(self):
         """Authenticate once when a simulated user starts."""
         self.ensure_token()
+
 
     # ---------- CREATE ----------
     @task(1)
     def create_user(self):
         self.ensure_token()
         data = {"username": rand_name("user_"), "enabled": True}
-        res = self.client.post("/admin/realms/master/users", headers=self.headers, data=json.dumps(data), name="POST /users")
+        res = self.client.post(f"/admin/realms/{KC_REALM}/users",
+                               headers=self.headers, data=json.dumps(data),
+                               name="CREATE /users")
         if res.status_code in (201, 204):
-            location = res.headers.get("Location")
-            if location:
-                user_id = location.rstrip("/").split("/")[-1]
+            loc = res.headers.get("Location")
+            if loc:
+                user_id = loc.rstrip("/").split("/")[-1]
                 self.created_users.append(user_id)
+        self.think("create")
 
     @task(1)
     def create_client(self):
         self.ensure_token()
         data = {"clientId": rand_name("client_"), "enabled": True, "publicClient": True}
-        res = self.client.post("/admin/realms/master/clients", headers=self.headers, data=json.dumps(data), name="POST /clients")
+        res = self.client.post(f"/admin/realms/{KC_REALM}/clients",
+                               headers=self.headers, data=json.dumps(data),
+                               name="CREATE /clients")
         if res.status_code in (201, 204):
-            location = res.headers.get("Location")
-            if location:
-                client_id = location.rstrip("/").split("/")[-1]
+            loc = res.headers.get("Location")
+            if loc:
+                client_id = loc.rstrip("/").split("/")[-1]
                 self.created_clients.append(client_id)
+        self.think("create")
 
     @task(1)
     def create_role(self):
         self.ensure_token()
-        data = {"name": rand_name("role_")}
-        res = self.client.post("/admin/realms/master/roles", headers=self.headers, data=json.dumps(data), name="POST /roles")
+        role_name = rand_name("role_")
+        data = {"name": role_name}
+        res = self.client.post(f"/admin/realms/{KC_REALM}/roles",
+                               headers=self.headers, data=json.dumps(data),
+                               name="CREATE /roles")
         if res.status_code in (201, 204):
-            location = res.headers.get("Location")
-            if location:
-                role_id = location.rstrip("/").split("/")[-1]
-                self.created_roles.append(role_id)
+            self.created_roles.append(role_name)
+        self.think("create")
 
     @task(1)
     def create_group(self):
         self.ensure_token()
         data = {"name": rand_name("group_")}
-        res = self.client.post("/admin/realms/master/groups", headers=self.headers, data=json.dumps(data), name="POST /groups")
+        res = self.client.post(f"/admin/realms/{KC_REALM}/groups",
+                               headers=self.headers, data=json.dumps(data),
+                               name="CREATE /groups")
         if res.status_code in (201, 204):
-            location = res.headers.get("Location")
-            if location:
-                group_id = location.rstrip("/").split("/")[-1]
+            loc = res.headers.get("Location")
+            if loc:
+                group_id = loc.rstrip("/").split("/")[-1]
                 self.created_groups.append(group_id)
-
-    @task(1)
-    def create_realm(self):
-        self.ensure_token()
-        data = {"realm": rand_name("realm_"), "enabled": True}
-        res = self.client.post("/admin/realms", headers=self.headers, data=json.dumps(data), name="POST /realms")
-        if res.status_code in (201, 204):
-            location = res.headers.get("Location")
-            if location:
-                realm_id = location.rstrip("/").split("/")[-1]
-                self.created_realms.append(realm_id)
+        self.think("create")
 
     # ---------- UPDATE ----------
     @task(1)
@@ -132,7 +151,10 @@ class KeycloakUser(HttpUser):
         if self.created_users:
             user_id = random.choice(self.created_users)
             data = {"enabled": random_bool()}
-            self.client.put(f"/admin/realms/master/users/{user_id}", headers=self.headers, data=json.dumps(data), name="PUT /users")
+            self.client.put(f"/admin/realms/{KC_REALM}/users/{user_id}",
+                            headers=self.headers, data=json.dumps(data),
+                            name="UPDATE /users")
+        self.think("update")
 
     @task(1)
     def update_client(self):
@@ -140,15 +162,21 @@ class KeycloakUser(HttpUser):
         if self.created_clients:
             client_id = random.choice(self.created_clients)
             data = {"enabled": random_bool()}
-            self.client.put(f"/admin/realms/master/clients/{client_id}", headers=self.headers, data=json.dumps(data), name="PUT /clients")
+            self.client.put(f"/admin/realms/{KC_REALM}/clients/{client_id}",
+                            headers=self.headers, data=json.dumps(data),
+                            name="UPDATE /clients")
+        self.think("update")
 
     @task(1)
     def update_role(self):
         self.ensure_token()
         if self.created_roles:
-            role_id = random.choice(self.created_roles)
-            data = {"description": f"Updated role {role_id}"}
-            self.client.put(f"/admin/realms/master/roles/{role_id}", headers=self.headers, data=json.dumps(data), name="PUT /roles")
+            role_name = random.choice(self.created_roles)
+            data = {"description": f"Updated {role_name}"}
+            self.client.put(f"/admin/realms/{KC_REALM}/roles/{role_name}",
+                            headers=self.headers, data=json.dumps(data),
+                            name="UPDATE /roles")
+        self.think("update")
 
     @task(1)
     def update_group(self):
@@ -156,15 +184,10 @@ class KeycloakUser(HttpUser):
         if self.created_groups:
             group_id = random.choice(self.created_groups)
             data = {"name": f"{group_id}_updated"}
-            self.client.put(f"/admin/realms/master/groups/{group_id}", headers=self.headers, data=json.dumps(data), name="PUT /groups")
-
-    @task(1)
-    def update_realm(self):
-        self.ensure_token()
-        if self.created_realms:
-            realm_id = random.choice(self.created_realms)
-            data = {"displayName": f"Updated {realm_id}"}
-            self.client.put(f"/admin/realms/{realm_id}", headers=self.headers, data=json.dumps(data), name="PUT /realms")
+            self.client.put(f"/admin/realms/{KC_REALM}/groups/{group_id}",
+                            headers=self.headers, data=json.dumps(data),
+                            name="UPDATE /groups")
+        self.think("update")
 
     # ---------- DELETE ----------
     @task(1)
@@ -172,32 +195,33 @@ class KeycloakUser(HttpUser):
         self.ensure_token()
         if self.created_users:
             user_id = self.created_users.pop()
-            self.client.delete(f"/admin/realms/master/users/{user_id}", headers=self.headers, name="DELETE /users")
+            self.client.delete(f"/admin/realms/{KC_REALM}/users/{user_id}",
+                               headers=self.headers, name="DELETE /users")
+        self.think("delete")
 
     @task(1)
     def delete_client(self):
         self.ensure_token()
         if self.created_clients:
             client_id = self.created_clients.pop()
-            self.client.delete(f"/admin/realms/master/clients/{client_id}", headers=self.headers, name="DELETE /clients")
+            self.client.delete(f"/admin/realms/{KC_REALM}/clients/{client_id}",
+                               headers=self.headers, name="DELETE /clients")
+        self.think("delete")
 
     @task(1)
     def delete_role(self):
         self.ensure_token()
         if self.created_roles:
-            role_id = self.created_roles.pop()
-            self.client.delete(f"/admin/realms/master/roles/{role_id}", headers=self.headers, name="DELETE /roles")
+            role_name = self.created_roles.pop()
+            self.client.delete(f"/admin/realms/{KC_REALM}/roles/{role_name}",
+                               headers=self.headers, name="DELETE /roles")
+        self.think("delete")
 
     @task(1)
     def delete_group(self):
         self.ensure_token()
         if self.created_groups:
             group_id = self.created_groups.pop()
-            self.client.delete(f"/admin/realms/master/groups/{group_id}", headers=self.headers, name="DELETE /groups")
-
-    @task(1)
-    def delete_realm(self):
-        self.ensure_token()
-        if self.created_realms:
-            realm_id = self.created_realms.pop()
-            self.client.delete(f"/admin/realms/{realm_id}", headers=self.headers, name="DELETE /realms")
+            self.client.delete(f"/admin/realms/{KC_REALM}/groups/{group_id}",
+                               headers=self.headers, name="DELETE /groups")
+        self.think("delete")

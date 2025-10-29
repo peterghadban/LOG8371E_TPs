@@ -1,3 +1,13 @@
+'''Keycloak Load Test Script using Locust
+To run, ensure you have Locust installed:
+    pip install locust
+Then start the docker container with Keycloak 26+ (no /auth prefix):
+    docker-compose up -d
+Finally, run the load test with:
+    locust -f keycloak_loadtest.py --host=http://localhost:8080
+'''
+
+
 from locust import HttpUser, task, between
 import json
 import random

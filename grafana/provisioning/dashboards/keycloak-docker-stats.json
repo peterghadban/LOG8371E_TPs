@@ -155,6 +155,75 @@
         "legend": { "displayMode": "table", "placement": "bottom" },
         "tooltip": { "mode": "single" }
       }
+    },
+    {
+      "type": "row",
+      "title": "Keycloak Application Metrics",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests per second — by endpoint",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{uri!~\"/metrics|/health.*\"}[1m]))",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate (4xx / 5xx) — req/s",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..|5..\"}[1m])) by (status)",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency — avg & p95 (seconds)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_sum{uri!~\"/metrics|/health.*\"}[5m])) / sum(rate(http_server_requests_seconds_count{uri!~\"/metrics|/health.*\"}[5m]))",
+          "legendFormat": "avg",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri!~\"/metrics|/health.*\"}[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
     }
   ],
   "refresh": "5s",

@@ -7,7 +7,11 @@ scrape_configs:
     scrape_timeout: 3s
     static_configs:
       - targets: ['docker-stats-exporter:9323']
-
+  - job_name: 'keycloak-app'
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['keycloak:9000']
   # Keep your blackbox (optional example)
   - job_name: 'blackbox'
     metrics_path: /metrics

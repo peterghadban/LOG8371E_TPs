@@ -22,6 +22,11 @@ def rand_name(prefix):
 def random_bool():
     return random.choice([True, False])
 
+USERS_WEIGHT = 100
+CLIENTS_WEIGHT = 100
+ROLES_WEIGHT = 100
+GROUPS_WEIGHT = 100
+REALMS_WEIGHT = 1 # Keep low relative to the others
 
 # ---------- Shared Auth Token (thread-safe) ----------
 shared_token = None
@@ -50,8 +55,8 @@ def get_admin_token(client):
     if res.status_code == 200:
         token_json = res.json()
         token = token_json.get("access_token", "")
-        expires_in = token_json.get("expires_in", 60)
-        expiry = time.time() + 15
+        expires_in = token_json.get("expires_in", 15)
+        expiry = time.time() + expires_in - 5
         print("[Auth] ✅ Obtained shared admin token.")
         return token, expiry
     else:
@@ -71,10 +76,17 @@ class KeycloakUser(HttpUser):
     created_groups = []
     created_realms = []
 
+    read_users = []
+    read_clients = []
+    read_roles = []
+    read_groups = []
+    read_realms = []
+
     to_delete_users = []
     to_delete_clients = []
     to_delete_roles = []
     to_delete_groups = []
+    to_delete_realms = []
 
 
     def ensure_token(self):
@@ -95,7 +107,7 @@ class KeycloakUser(HttpUser):
         self.ensure_token()
 
     # ---------- CREATE ----------
-    @task(1)
+    @task(USERS_WEIGHT)
     def create_user(self):
         self.ensure_token()
         data = {"username": rand_name("user_"), "enabled": True}
@@ -108,7 +120,7 @@ class KeycloakUser(HttpUser):
                 user_id = loc.rstrip("/").split("/")[-1]
                 self.created_users.append(user_id)
 
-    @task(1)
+    @task(CLIENTS_WEIGHT)
     def create_client(self):
         self.ensure_token()
         data = {"clientId": rand_name("client_"), "enabled": True, "publicClient": True}
@@ -121,7 +133,7 @@ class KeycloakUser(HttpUser):
                 client_id = loc.rstrip("/").split("/")[-1]
                 self.created_clients.append(client_id)
 
-    @task(1)
+    @task(ROLES_WEIGHT)
     def create_role(self):
         self.ensure_token()
         role_name = rand_name("role_")
@@ -137,7 +149,7 @@ class KeycloakUser(HttpUser):
         if res.status_code in (201, 204):
             self.created_roles.append(role_name)
 
-    @task(1)
+    @task(GROUPS_WEIGHT)
     def create_group(self):
         self.ensure_token()
         data = {"name": rand_name("group_")}
@@ -150,32 +162,58 @@ class KeycloakUser(HttpUser):
                 group_id = loc.rstrip("/").split("/")[-1]
                 self.created_groups.append(group_id)
 
-    # ---------- UPDATE ----------
-    @task(1)
-    def update_user(self):
+    @task(REALMS_WEIGHT)
+    def create_realm(self):
+        self.ensure_token()
+        realm_name = rand_name("realm_")
+        data = {
+            "realm": realm_name,
+            "enabled": True
+        }
+
+        res = self.client.post(
+            "/admin/realms",
+            headers=self.headers,
+            data=json.dumps(data),
+            name="CREATE /realms"
+        )
+
+        if res.status_code in (201, 204):
+            self.created_realms.append(realm_name)
+
+    # ---------- READ ----------
+    @task(USERS_WEIGHT)
+    def read_user(self):
         self.ensure_token()
         if self.created_users:
             user_id = self.created_users.pop()
-            data = {"enabled": random_bool()}
-            self.client.put(f"/admin/realms/{KC_REALM}/users/{user_id}",
-                            headers=self.headers, data=json.dumps(data),
-                            name="UPDATE /users")
-            self.to_delete_users.append(user_id)
 
-    @task(1)
-    def update_client(self):
+            res = self.client.get(
+                f"/admin/realms/{KC_REALM}/users/{user_id}",
+                headers=self.headers,
+                name="READ /users"
+            )
+
+            if res.status_code == 200:
+                self.read_users.append(user_id)
+
+    @task(CLIENTS_WEIGHT)
+    def read_client(self):
         self.ensure_token()
         if self.created_clients:
             client_id = self.created_clients.pop()
-            data = {"enabled": random_bool()}
-            self.client.put(f"/admin/realms/{KC_REALM}/clients/{client_id}",
-                            headers=self.headers, data=json.dumps(data),
-                            name="UPDATE /clients")
-            self.to_delete_clients.append(client_id)
-            
 
-    @task(1)
-    def update_role(self):
+            res = self.client.get(
+                f"/admin/realms/{KC_REALM}/clients/{client_id}",
+                headers=self.headers,
+                name="READ /clients"
+            )
+            
+            if res.status_code == 200:
+                self.read_clients.append(client_id)
+
+    @task(ROLES_WEIGHT)
+    def read_role(self):
         self.ensure_token()
         if self.created_roles:
             role_name = self.created_roles.pop()
@@ -183,36 +221,131 @@ class KeycloakUser(HttpUser):
             res = self.client.get(
                 f"/admin/realms/{KC_REALM}/roles/{role_name}",
                 headers=self.headers,
-                name="GET /roles"
+                name="READ /roles"
             )
+
             if res.status_code == 200:
-                role_data = res.json()
-                # Modify description (or any field you want)
-                role_data["description"] = f"Updated {role_name}"
+                self.read_roles.append(role_name)
 
-                # Send full valid payload
-                self.client.put(
-                    f"/admin/realms/{KC_REALM}/roles/{role_name}",
-                    headers=self.headers,
-                    data=json.dumps(role_data),
-                    name="UPDATE /roles"
-                )
-
-                self.to_delete_roles.append(role_name)
-
-    @task(1)
-    def update_group(self):
+    @task(GROUPS_WEIGHT)
+    def read_group(self):
         self.ensure_token()
         if self.created_groups:
             group_id = self.created_groups.pop()
+
+            res = self.client.get(
+                f"/admin/realms/{KC_REALM}/groups/{group_id}",
+                headers=self.headers,
+                name="READ /groups"
+            )
+            
+            if res.status_code == 200:
+                self.read_groups.append(group_id)
+
+    @task(REALMS_WEIGHT)
+    def read_realm(self):
+        self.ensure_token()
+        if self.created_realms:
+            realm_name = self.created_realms.pop()
+
+            res = self.client.get(
+                f"/admin/realms/{realm_name}",
+                headers=self.headers,
+                name="READ /realms"
+            )
+
+            if res.status_code == 200:
+                self.read_realms.append(realm_name)
+
+    # ---------- UPDATE ----------
+    @task(USERS_WEIGHT)
+    def update_user(self):
+        self.ensure_token()
+        if self.read_users:
+            user_id = self.read_users.pop()
+            data = {"enabled": random_bool()}
+            self.client.put(f"/admin/realms/{KC_REALM}/users/{user_id}",
+                            headers=self.headers, data=json.dumps(data),
+                            name="UPDATE /users")
+            self.to_delete_users.append(user_id)
+
+    @task(CLIENTS_WEIGHT)
+    def update_client(self):
+        self.ensure_token()
+        if self.read_clients:
+            client_id = self.read_clients.pop()
+            data = {"enabled": random_bool()}
+            self.client.put(f"/admin/realms/{KC_REALM}/clients/{client_id}",
+                            headers=self.headers, data=json.dumps(data),
+                            name="UPDATE /clients")
+            self.to_delete_clients.append(client_id)
+            
+
+    @task(ROLES_WEIGHT)
+    def update_role(self):
+        self.ensure_token()
+        if self.read_roles:
+            role_name = self.read_roles.pop()
+
+            res = self.client.get(
+                f"/admin/realms/{KC_REALM}/roles/{role_name}",
+                headers=self.headers,
+                name="READ /roles"
+            )
+
+            role_data = res.json()
+
+            # Modify description (or any field you want)
+            role_data["description"] = f"Updated {role_name}"
+
+            self.client.put(
+                f"/admin/realms/{KC_REALM}/roles/{role_name}",
+                headers=self.headers,
+                data=json.dumps(role_data),
+                name="UPDATE /roles"
+            )
+
+            self.to_delete_roles.append(role_name)
+
+    @task(GROUPS_WEIGHT)
+    def update_group(self):
+        self.ensure_token()
+        if self.read_groups:
+            group_id = self.read_groups.pop()
             data = {"name": f"{group_id}_updated"}
             self.client.put(f"/admin/realms/{KC_REALM}/groups/{group_id}",
                             headers=self.headers, data=json.dumps(data),
                             name="UPDATE /groups")
             self.to_delete_groups.append(group_id)
 
+    @task(REALMS_WEIGHT)
+    def update_realm(self):
+        self.ensure_token()
+        if self.read_realms:
+            realm_name = self.read_realms.pop()
+
+            res = self.client.get(
+                f"/admin/realms/{realm_name}",
+                headers=self.headers,
+                name="READ /realms"
+            )
+
+            realm_data = res.json()
+
+            # Example modification: toggle registration
+            realm_data["registrationAllowed"] = random_bool()
+
+            self.client.put(
+                f"/admin/realms/{realm_name}",
+                headers=self.headers,
+                data=json.dumps(realm_data),
+                name="UPDATE /realms"
+            )
+
+            self.to_delete_realms.append(realm_name)
+
     # ---------- DELETE ----------
-    @task(1)
+    @task(USERS_WEIGHT)
     def delete_user(self):
         self.ensure_token()
         if self.to_delete_users:
@@ -220,7 +353,7 @@ class KeycloakUser(HttpUser):
             self.client.delete(f"/admin/realms/{KC_REALM}/users/{user_id}",
                                headers=self.headers, name="DELETE /users")
 
-    @task(1)
+    @task(CLIENTS_WEIGHT)
     def delete_client(self):
         self.ensure_token()
         if self.to_delete_clients:
@@ -228,7 +361,7 @@ class KeycloakUser(HttpUser):
             self.client.delete(f"/admin/realms/{KC_REALM}/clients/{client_id}",
                                headers=self.headers, name="DELETE /clients")
 
-    @task(1)
+    @task(ROLES_WEIGHT)
     def delete_role(self):
         self.ensure_token()
         if self.to_delete_roles:
@@ -237,10 +370,22 @@ class KeycloakUser(HttpUser):
             self.client.delete(f"/admin/realms/{KC_REALM}/roles/{role_name}",
                                headers=self.headers, name="DELETE /roles")
 
-    @task(1)
+    @task(GROUPS_WEIGHT)
     def delete_group(self):
         self.ensure_token()
         if self.to_delete_groups:
             group_id = self.to_delete_groups.pop()
             self.client.delete(f"/admin/realms/{KC_REALM}/groups/{group_id}",
                                headers=self.headers, name="DELETE /groups")
+
+    @task(REALMS_WEIGHT)
+    def delete_realm(self):
+        self.ensure_token()
+        if self.to_delete_realms:
+            realm_name = self.to_delete_realms.pop()
+
+            self.client.delete(
+                f"/admin/realms/{realm_name}",
+                headers=self.headers,
+                name="DELETE /realms"
+            )

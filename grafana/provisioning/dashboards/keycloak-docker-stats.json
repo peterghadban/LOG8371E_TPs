@@ -185,7 +185,7 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 25 },
       "targets": [
         {
-          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..|5..\"}[1m])) by (status)",
+          "expr": "sum by (name) (locust_endpoint_fail_rps)",
           "refId": "A",
           "instant": false,
           "format": "time_series",
@@ -203,7 +203,7 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
       "targets": [
         {
-          "expr": "sum(rate(http_server_requests_seconds_sum{uri!~\"/metrics|/health.*\"}[5m])) / sum(rate(http_server_requests_seconds_count{uri!~\"/metrics|/health.*\"}[5m]))",
+          "expr": "locust_latency_avg_ms / 1000",
           "legendFormat": "avg",
           "refId": "A",
           "instant": false,
@@ -211,7 +211,7 @@
           "interval": "5s"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri!~\"/metrics|/health.*\"}[5m])) by (le))",
+          "expr": "locust_latency_p95_ms / 1000",
           "legendFormat": "p95",
           "refId": "B",
           "instant": false,
@@ -220,6 +220,41 @@
         }
       ],
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Locust — Concurrent Users",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": null,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "locust_users{job=\"locust\"}",
+          "instant": false,
+          "format": "time_series",
+          "legendFormat": "Concurrent Users"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "decimals": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
       "options": {
         "legend": { "displayMode": "table", "placement": "bottom" },
         "tooltip": { "mode": "single" }

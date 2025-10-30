@@ -96,6 +96,41 @@ services:
       - "9115:9115"
     networks:
       - keycloak-net
+  locust:
+    image: locustio/locust:2.42.1
+    container_name: locust
+    command:
+      - -f
+      - /mnt/locust/keycloak_loadtest.py
+      - --web-host
+      - 0.0.0.0
+      - --web-port
+      - "8089"
+      - --host
+      - http://keycloak:8080
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./keycloak_loadtest.py:/mnt/locust/keycloak_loadtest.py:ro
+    networks:
+      - keycloak-net
+    depends_on:
+      - keycloak
+  
+  locust-exporter:
+    build: ./locust-exporter
+    container_name: locust-exporter
+    environment:
+      - LOCUST_URL=http://locust:8089
+      - LISTEN_PORT=9324
+      - SCRAPE_INTERVAL=5
+    networks:
+      - keycloak-net
+    depends_on:
+      - locust
+
+
+
 
 volumes:
   postgres_data:

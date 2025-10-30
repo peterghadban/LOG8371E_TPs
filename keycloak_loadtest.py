@@ -51,7 +51,7 @@ def get_admin_token(client):
         token_json = res.json()
         token = token_json.get("access_token", "")
         expires_in = token_json.get("expires_in", 60)
-        expiry = time.time() + expires_in - 5
+        expiry = time.time() + 15
         print("[Auth] ✅ Obtained shared admin token.")
         return token, expiry
     else:
@@ -62,7 +62,7 @@ def get_admin_token(client):
 
 # ---------- Locust User ----------
 class KeycloakUser(HttpUser):
-    wait_time = between(1, 3)
+    wait_time = between(1, 3) # Modify random think time here
     headers = {}
 
     created_users = []
@@ -71,33 +71,28 @@ class KeycloakUser(HttpUser):
     created_groups = []
     created_realms = []
 
+    to_delete_users = []
+    to_delete_clients = []
+    to_delete_roles = []
+    to_delete_groups = []
+
+
     def ensure_token(self):
         """Ensure a valid shared token for all users."""
         global shared_token, token_expiry
-        with lock:
-            if not shared_token or time.time() > token_expiry:
-                shared_token, token_expiry = get_admin_token(self.client)
+        if not shared_token or time.time() > token_expiry:
+            with lock:
+                if not shared_token or time.time() > token_expiry:
+                    shared_token, token_expiry = get_admin_token(self.client)
         if shared_token:
             self.headers = {
                 "Authorization": f"Bearer {shared_token}",
                 "Content-Type": "application/json",
             }
 
-    def think(self, action_type: str):
-        """Simulate realistic human think time after actions."""
-        ranges = {
-            "create": (0.6, 1.8),
-            "update": (0.8, 2.2),
-            "delete": (0.5, 1.5),
-            "misc":   (0.4, 1.2),
-        }
-        lo, hi = ranges.get(action_type, ranges["misc"])
-        time.sleep(random.uniform(lo, hi))
-
     def on_start(self):
         """Authenticate once when a simulated user starts."""
         self.ensure_token()
-
 
     # ---------- CREATE ----------
     @task(1)
@@ -112,7 +107,6 @@ class KeycloakUser(HttpUser):
             if loc:
                 user_id = loc.rstrip("/").split("/")[-1]
                 self.created_users.append(user_id)
-        self.think("create")
 
     @task(1)
     def create_client(self):
@@ -126,19 +120,22 @@ class KeycloakUser(HttpUser):
             if loc:
                 client_id = loc.rstrip("/").split("/")[-1]
                 self.created_clients.append(client_id)
-        self.think("create")
 
     @task(1)
     def create_role(self):
         self.ensure_token()
         role_name = rand_name("role_")
         data = {"name": role_name}
-        res = self.client.post(f"/admin/realms/{KC_REALM}/roles",
-                               headers=self.headers, data=json.dumps(data),
-                               name="CREATE /roles")
+        
+        res = self.client.post(
+            f"/admin/realms/{KC_REALM}/roles",
+            headers=self.headers,
+            data=json.dumps(data),
+            name="CREATE /roles"
+        )
+        
         if res.status_code in (201, 204):
             self.created_roles.append(role_name)
-        self.think("create")
 
     @task(1)
     def create_group(self):
@@ -152,86 +149,98 @@ class KeycloakUser(HttpUser):
             if loc:
                 group_id = loc.rstrip("/").split("/")[-1]
                 self.created_groups.append(group_id)
-        self.think("create")
 
     # ---------- UPDATE ----------
     @task(1)
     def update_user(self):
         self.ensure_token()
         if self.created_users:
-            user_id = random.choice(self.created_users)
+            user_id = self.created_users.pop()
             data = {"enabled": random_bool()}
             self.client.put(f"/admin/realms/{KC_REALM}/users/{user_id}",
                             headers=self.headers, data=json.dumps(data),
                             name="UPDATE /users")
-        self.think("update")
+            self.to_delete_users.append(user_id)
 
     @task(1)
     def update_client(self):
         self.ensure_token()
         if self.created_clients:
-            client_id = random.choice(self.created_clients)
+            client_id = self.created_clients.pop()
             data = {"enabled": random_bool()}
             self.client.put(f"/admin/realms/{KC_REALM}/clients/{client_id}",
                             headers=self.headers, data=json.dumps(data),
                             name="UPDATE /clients")
-        self.think("update")
+            self.to_delete_clients.append(client_id)
+            
 
     @task(1)
     def update_role(self):
         self.ensure_token()
         if self.created_roles:
-            role_name = random.choice(self.created_roles)
-            data = {"description": f"Updated {role_name}"}
-            self.client.put(f"/admin/realms/{KC_REALM}/roles/{role_name}",
-                            headers=self.headers, data=json.dumps(data),
-                            name="UPDATE /roles")
-        self.think("update")
+            role_name = self.created_roles.pop()
+
+            res = self.client.get(
+                f"/admin/realms/{KC_REALM}/roles/{role_name}",
+                headers=self.headers,
+                name="GET /roles"
+            )
+            if res.status_code == 200:
+                role_data = res.json()
+                # Modify description (or any field you want)
+                role_data["description"] = f"Updated {role_name}"
+
+                # Send full valid payload
+                self.client.put(
+                    f"/admin/realms/{KC_REALM}/roles/{role_name}",
+                    headers=self.headers,
+                    data=json.dumps(role_data),
+                    name="UPDATE /roles"
+                )
+
+                self.to_delete_roles.append(role_name)
 
     @task(1)
     def update_group(self):
         self.ensure_token()
         if self.created_groups:
-            group_id = random.choice(self.created_groups)
+            group_id = self.created_groups.pop()
             data = {"name": f"{group_id}_updated"}
             self.client.put(f"/admin/realms/{KC_REALM}/groups/{group_id}",
                             headers=self.headers, data=json.dumps(data),
                             name="UPDATE /groups")
-        self.think("update")
+            self.to_delete_groups.append(group_id)
 
     # ---------- DELETE ----------
     @task(1)
     def delete_user(self):
         self.ensure_token()
-        if self.created_users:
-            user_id = self.created_users.pop()
+        if self.to_delete_users:
+            user_id = self.to_delete_users.pop()
             self.client.delete(f"/admin/realms/{KC_REALM}/users/{user_id}",
                                headers=self.headers, name="DELETE /users")
-        self.think("delete")
 
     @task(1)
     def delete_client(self):
         self.ensure_token()
-        if self.created_clients:
-            client_id = self.created_clients.pop()
+        if self.to_delete_clients:
+            client_id = self.to_delete_clients.pop()
             self.client.delete(f"/admin/realms/{KC_REALM}/clients/{client_id}",
                                headers=self.headers, name="DELETE /clients")
-        self.think("delete")
 
     @task(1)
     def delete_role(self):
         self.ensure_token()
-        if self.created_roles:
-            role_name = self.created_roles.pop()
+        if self.to_delete_roles:
+            role_name = self.to_delete_roles.pop()
+
             self.client.delete(f"/admin/realms/{KC_REALM}/roles/{role_name}",
                                headers=self.headers, name="DELETE /roles")
-        self.think("delete")
 
     @task(1)
     def delete_group(self):
         self.ensure_token()
-        if self.created_groups:
-            group_id = self.created_groups.pop()
+        if self.to_delete_groups:
+            group_id = self.to_delete_groups.pop()
             self.client.delete(f"/admin/realms/{KC_REALM}/groups/{group_id}",
                                headers=self.headers, name="DELETE /groups")
-        self.think("delete")

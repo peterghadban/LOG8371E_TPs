@@ -197,34 +197,7 @@
         "tooltip": { "mode": "single" }
       }
     },
-    {
-      "type": "timeseries",
-      "title": "Latency — avg & p95 (seconds)",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
-      "targets": [
-        {
-          "expr": "locust_latency_avg_ms / 1000",
-          "legendFormat": "avg",
-          "refId": "A",
-          "instant": false,
-          "format": "time_series",
-          "interval": "5s"
-        },
-        {
-          "expr": "locust_latency_p95_ms / 1000",
-          "legendFormat": "p95",
-          "refId": "B",
-          "instant": false,
-          "format": "time_series",
-          "interval": "5s"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
-        "tooltip": { "mode": "single" }
-      }
-    },
+    
     {
       "type": "timeseries",
       "title": "Locust — Concurrent Users",

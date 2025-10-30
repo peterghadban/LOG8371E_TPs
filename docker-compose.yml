@@ -37,6 +37,22 @@ services:
       - postgres
     networks:
       - keycloak-net
+
+  docker-stats-exporter:
+    build:
+      context: ./docker-stats-exporter
+    container_name: docker-stats-exporter
+    environment:
+      CONTAINER_NAME: keycloak
+      SCRAPE_INTERVAL: "5"
+      LISTEN_PORT: "9323"
+      DOCKER_HOST: tcp://host.docker.internal:2375
+    ports:
+      - "9323:9323"
+    networks:
+      - keycloak-net
+
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -47,6 +63,8 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
     ports:
       - "9090:9090"
+    depends_on:
+      - docker-stats-exporter
     networks:
       - keycloak-net
 
@@ -57,8 +75,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
     networks:
@@ -75,8 +96,6 @@ services:
       - "9115:9115"
     networks:
       - keycloak-net
-
-
 
 volumes:
   postgres_data:

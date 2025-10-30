@@ -1,0 +1,169 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "CPU — keycloak (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "max by (container) (docker_container_cpu_percent{container=~\"keycloak(|.*)\"})",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory Used / Limit — keycloak (bytes)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "max by (container) (docker_container_memory_usage_bytes{container=~\"keycloak(|.*)\"})",
+          "legendFormat": "Used",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        },
+        {
+          "expr": "max by (container) (docker_container_memory_limit_bytes{container=~\"keycloak(|.*)\"})",
+          "legendFormat": "Limit",
+          "refId": "B",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory — keycloak (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "max by (container) (docker_container_memory_percent{container=~\"keycloak(|.*)\"})",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Network Rate — keycloak (bytes/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(docker_container_network_receive_bytes_total{container=~\"keycloak(|.*)\"}[1m])",
+          "legendFormat": "rx",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        },
+        {
+          "expr": "rate(docker_container_network_transmit_bytes_total{container=~\"keycloak(|.*)\"}[1m])",
+          "legendFormat": "tx",
+          "refId": "B",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Network Total — keycloak (bytes)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "max by (container) (docker_container_network_receive_bytes_total{container=~\"keycloak(|.*)\"})",
+          "legendFormat": "rx_total",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        },
+        {
+          "expr": "max by (container) (docker_container_network_transmit_bytes_total{container=~\"keycloak(|.*)\"})",
+          "legendFormat": "tx_total",
+          "refId": "B",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Block I/O — keycloak (bytes/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "rate(docker_container_block_read_bytes_total{container=~\"keycloak(|.*)\"}[1m])",
+          "legendFormat": "read",
+          "refId": "A",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        },
+        {
+          "expr": "rate(docker_container_block_write_bytes_total{container=~\"keycloak(|.*)\"}[1m])",
+          "legendFormat": "write",
+          "refId": "B",
+          "instant": false,
+          "format": "time_series",
+          "interval": "5s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["keycloak", "docker", "stats"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timezone": "",
+  "title": "Keycloak Container — CPU/Mem/IO/Net",
+  "version": 5
+}
